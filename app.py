@@ -66,20 +66,32 @@ def extract_detections(result, img_width: int, img_height: int) -> list[dict[str
     return detections
 
 
+def get_color(class_name: str) -> str:
+    palette = [
+        "#ef4444", "#f97316", "#f59e0b", "#eab308", "#84cc16", 
+        "#22c55e", "#10b981", "#14b8a6", "#06b6d4", "#0ea5e9", 
+        "#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#d946ef", 
+        "#ec4899", "#f43f5e"
+    ]
+    idx = sum(ord(c) for c in class_name) % len(palette)
+    return palette[idx]
+
+
 def render_boxes(image: Image.Image, detections: list[dict]) -> Image.Image:
     annotated = image.copy()
     draw = ImageDraw.Draw(annotated, "RGBA")
     for d in detections:
         x1, y1, x2, y2 = d["x1"], d["y1"], d["x2"], d["y2"]
         label = f"{d['clase']} {d['probabilidad']:.2f}"
+        color = get_color(d["clase"])
         
         # Caja
-        draw.rectangle([x1, y1, x2, y2], outline="#0f766e", width=4)
+        draw.rectangle([x1, y1, x2, y2], outline=color, width=4)
         
         # Etiqueta
         text_w = len(label) * 6 + 8
         text_h = 16
-        draw.rectangle([x1, max(0, y1 - text_h), x1 + text_w, max(0, y1)], fill="#0f766e")
+        draw.rectangle([x1, max(0, y1 - text_h), x1 + text_w, max(0, y1)], fill=color)
         draw.text((x1 + 3, max(0, y1 - text_h)), label, fill="white")
         
     return annotated
@@ -246,7 +258,7 @@ st.markdown(
     <section class="hero">
       <div class="pill">Sistema de Vision de Seguridad</div>
       <h1>PPE Detector</h1>
-      <p>Sube una imagen para detectar equipo de proteccion personal con tu modelo TFLite.</p>
+      <p>Sube una imagen o usa tu camara para detectar equipo de proteccion personal en tiempo real con tu modelo TFLite.</p>
     </section>
     """,
     unsafe_allow_html=True,
@@ -285,11 +297,16 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-uploaded_file = st.file_uploader(
-    "Sube una imagen",
-    type=["jpg", "jpeg", "png", "webp"],
-    accept_multiple_files=False,
-)
+input_method = st.radio("Metodo de entrada", ["📸 Usar camara", "📁 Subir archivo"], horizontal=True)
+
+if input_method == "📁 Subir archivo":
+    uploaded_file = st.file_uploader(
+        "Sube una imagen",
+        type=["jpg", "jpeg", "png", "webp"],
+        accept_multiple_files=False,
+    )
+else:
+    uploaded_file = st.camera_input("Toma una foto con tu camara")
 
 if uploaded_file is None:
     st.markdown(
@@ -297,7 +314,7 @@ if uploaded_file is None:
         <div class="panel">
             <div class="pill">Listo</div>
             <p style="margin:0.2rem 0 0.2rem; color: var(--muted);">
-                Sube una imagen de EPP para ejecutar la deteccion. Modelo en uso:
+                Sube una imagen o toma una foto para ejecutar la deteccion. Modelo en uso:
                 <span class="mono">{MODEL_PATH.name}</span>
             </p>
         </div>
