@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import Counter
 from pathlib import Path
 
 import streamlit as st
@@ -24,7 +23,7 @@ def load_model(model_path: Path):
     return YOLO(str(model_path), task="detect")
 
 
-def summarize_detections(result) -> list[dict[str, str | int | float]]:
+def extract_detections(result) -> list[dict[str, str | int | float]]:
     boxes = result.boxes
     if boxes is None or len(boxes) == 0:
         return []
@@ -32,24 +31,24 @@ def summarize_detections(result) -> list[dict[str, str | int | float]]:
     names = result.names
     class_ids = boxes.cls.tolist()
     confidences = boxes.conf.tolist()
-    counts = Counter(int(class_id) for class_id in class_ids)
+    xyxy = boxes.xyxy.tolist()
 
-    summary = []
-    for class_id, count in sorted(counts.items(), key=lambda item: names[item[0]]):
-        matching_confidences = [
-            confidence
-            for detected_class_id, confidence in zip(class_ids, confidences, strict=True)
-            if int(detected_class_id) == class_id
-        ]
-        summary.append(
+    detections = []
+    for idx, (class_id, confidence, coords) in enumerate(zip(class_ids, confidences, xyxy, strict=True), start=1):
+        x1, y1, x2, y2 = coords
+        detections.append(
             {
-                "class": names[class_id],
-                "count": count,
-                "best_confidence": round(max(matching_confidences), 3),
+                "box_id": idx,
+                "class": names[int(class_id)],
+                "confidence": round(float(confidence), 4),
+                "x1": round(float(x1), 1),
+                "y1": round(float(y1), 1),
+                "x2": round(float(x2), 1),
+                "y2": round(float(y2), 1),
             }
         )
 
-    return summary
+    return detections
 
 
 st.set_page_config(page_title="PPE Detector", layout="wide")
@@ -279,8 +278,8 @@ with st.spinner("Running detection..."):
     )
 
 result = results[0]
-annotated_image = Image.fromarray(result.plot()[..., ::-1])
-summary = summarize_detections(result)
+annotated_image = Image.fromarray(result.plot(conf=True, labels=True)[..., ::-1])
+detections = extract_detections(result)
 
 left, right = st.columns([1, 1])
 
@@ -298,13 +297,13 @@ with right:
 
 metric_cols = st.columns(3)
 metric_cols[0].metric("Detections", len(result.boxes) if result.boxes is not None else 0)
-metric_cols[1].metric("Classes found", len(summary))
+metric_cols[1].metric("Classes found", len({row["class"] for row in detections}))
 metric_cols[2].metric("Model", MODEL_PATH.name)
 
 st.markdown('<div class="panel" style="margin-top: 0.85rem;">', unsafe_allow_html=True)
-st.subheader("Detection Summary")
-if summary:
-    st.dataframe(summary, use_container_width=True, hide_index=True)
+st.subheader("All Detected Boxes and Probabilities")
+if detections:
+    st.dataframe(detections, use_container_width=True, hide_index=True)
 else:
     st.write("No detections found for the current thresholds.")
 st.markdown("</div>", unsafe_allow_html=True)
