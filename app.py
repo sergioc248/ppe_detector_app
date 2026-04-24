@@ -14,7 +14,7 @@ except Exception as exc:  # pragma: no cover - deployment dependency guard
 
 
 MODEL_PATH = Path(__file__).with_name("train-3_best.onnx")
-DEFAULT_ONNX_IMGSZ = 640
+DEFAULT_ONNX_IMGSZ = 512
 
 
 @st.cache_resource
@@ -272,7 +272,7 @@ with st.sidebar:
     iou_threshold = st.slider("Umbral IoU", 0.05, 0.95, 0.45, 0.05)
     st.info(
         "Esta app ejecuta el modelo ONNX con ONNX Runtime en CPU. "
-        "El tamano de la imagen se escala automaticamente a 640px de forma interna para la inferencia."
+        "El tamano de la imagen se escala automaticamente a 512px de forma interna para la inferencia."
     )
     
     st.markdown("<br><br><br>", unsafe_allow_html=True)
