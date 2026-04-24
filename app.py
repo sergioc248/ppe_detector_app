@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import streamlit as st
-from PIL import Image
+from PIL import Image, ImageDraw
 
 try:
     from ultralytics import YOLO
@@ -14,16 +14,17 @@ except Exception as exc:  # pragma: no cover - deployment dependency guard
 
 
 MODEL_PATH = Path(__file__).with_name("train-3_best.onnx")
+DEFAULT_ONNX_IMGSZ = 640
 
 
 @st.cache_resource
 def load_model(model_path: Path):
     if YOLO is None:
-        raise RuntimeError("Ultralytics is not available in this environment.") from ULTRALYTICS_IMPORT_ERROR
+        raise RuntimeError("Ultralytics no esta disponible en este entorno.") from ULTRALYTICS_IMPORT_ERROR
     return YOLO(str(model_path), task="detect")
 
 
-def extract_detections(result) -> list[dict[str, str | int | float]]:
+def extract_detections(result, img_width: int, img_height: int) -> list[dict[str, str | int | float]]:
     boxes = result.boxes
     if boxes is None or len(boxes) == 0:
         return []
@@ -31,16 +32,19 @@ def extract_detections(result) -> list[dict[str, str | int | float]]:
     names = result.names
     class_ids = boxes.cls.tolist()
     confidences = boxes.conf.tolist()
-    xyxy = boxes.xyxy.tolist()
+    xyxyn = boxes.xyxyn.tolist()  # Usar coordenadas normalizadas para asegurar la escala correcta
 
     detections = []
-    for idx, (class_id, confidence, coords) in enumerate(zip(class_ids, confidences, xyxy, strict=True), start=1):
-        x1, y1, x2, y2 = coords
+    for idx, (class_id, confidence, coords) in enumerate(zip(class_ids, confidences, xyxyn, strict=True), start=1):
+        nx1, ny1, nx2, ny2 = coords
+        x1, x2 = nx1 * img_width, nx2 * img_width
+        y1, y2 = ny1 * img_height, ny2 * img_height
+        
         detections.append(
             {
-                "box_id": idx,
-                "class": names[int(class_id)],
-                "confidence": round(float(confidence), 4),
+                "id_caja": idx,
+                "clase": names[int(class_id)],
+                "probabilidad": round(float(confidence), 4),
                 "x1": round(float(x1), 1),
                 "y1": round(float(y1), 1),
                 "x2": round(float(x2), 1),
@@ -49,6 +53,25 @@ def extract_detections(result) -> list[dict[str, str | int | float]]:
         )
 
     return detections
+
+
+def render_boxes(image: Image.Image, detections: list[dict]) -> Image.Image:
+    annotated = image.copy()
+    draw = ImageDraw.Draw(annotated, "RGBA")
+    for d in detections:
+        x1, y1, x2, y2 = d["x1"], d["y1"], d["x2"], d["y2"]
+        label = f"{d['clase']} {d['probabilidad']:.2f}"
+        
+        # Caja
+        draw.rectangle([x1, y1, x2, y2], outline="#0f766e", width=4)
+        
+        # Etiqueta
+        text_w = len(label) * 6 + 8
+        text_h = 16
+        draw.rectangle([x1, max(0, y1 - text_h), x1 + text_w, max(0, y1)], fill="#0f766e")
+        draw.text((x1 + 3, max(0, y1 - text_h)), label, fill="white")
+        
+    return annotated
 
 
 st.set_page_config(page_title="PPE Detector", layout="wide")
@@ -119,6 +142,13 @@ st.markdown(
 
     [data-testid="stSidebar"] * {
         font-family: 'Space Grotesk', sans-serif;
+    }
+
+    [data-testid="stSidebar"] .material-icons,
+    [data-testid="stSidebar"] [class*="material-symbols"] {
+        font-family: "Material Symbols Rounded" !important;
+        font-weight: normal;
+        font-style: normal;
     }
 
     .panel {
@@ -214,37 +244,39 @@ st.markdown(
 st.markdown(
     """
     <section class="hero">
-      <div class="pill">Safety Vision System</div>
+      <div class="pill">Sistema de Vision de Seguridad</div>
       <h1>PPE Detector</h1>
-      <p>Upload an image to detect personal protective equipment with your ONNX model.</p>
+      <p>Sube una imagen para detectar equipo de proteccion personal con tu modelo ONNX.</p>
     </section>
     """,
     unsafe_allow_html=True,
 )
 
 if not MODEL_PATH.exists():
-    st.error(f"Model file not found: `{MODEL_PATH}`")
+    st.error(f"No se encontro el archivo del modelo: `{MODEL_PATH}`")
     st.stop()
 
 if YOLO is None:
-    st.error("Ultralytics is not installed correctly in this deployment.")
+    st.error("Ultralytics no esta instalado correctamente en este despliegue.")
     st.info(
-        "Install dependencies from requirements.txt and redeploy. "
-        "If it still fails, check build logs for the ultralytics install error."
+        "Instala las dependencias de requirements.txt y vuelve a desplegar. "
+        "Si sigue fallando, revisa los logs de compilacion para ver el error de instalacion de ultralytics."
     )
     if ULTRALYTICS_IMPORT_ERROR is not None:
         st.code(str(ULTRALYTICS_IMPORT_ERROR), language="text")
     st.stop()
 
 with st.sidebar:
-    st.header("Inference Settings")
-    confidence_threshold = st.slider("Confidence threshold", 0.05, 0.95, 0.25, 0.05)
-    iou_threshold = st.slider("IoU threshold", 0.05, 0.95, 0.45, 0.05)
-    image_size = st.select_slider("Image size", options=[320, 480, 640, 768, 960], value=640)
-    st.info("This app runs the ONNX model through ONNX Runtime on CPU for compatibility.")
+    st.header("Configuracion de inferencia")
+    confidence_threshold = st.slider("Umbral de confianza", 0.05, 0.95, 0.25, 0.05)
+    iou_threshold = st.slider("Umbral IoU", 0.05, 0.95, 0.45, 0.05)
+    st.info(
+        "Esta app ejecuta el modelo ONNX con ONNX Runtime en CPU. "
+        "El tamano de la imagen se escala automaticamente a 640px de forma interna para la inferencia."
+    )
 
 uploaded_file = st.file_uploader(
-    "Upload an image",
+    "Sube una imagen",
     type=["jpg", "jpeg", "png", "webp"],
     accept_multiple_files=False,
 )
@@ -253,9 +285,9 @@ if uploaded_file is None:
     st.markdown(
         f"""
         <div class="panel">
-            <div class="pill">Ready</div>
+            <div class="pill">Listo</div>
             <p style="margin:0.2rem 0 0.2rem; color: var(--muted);">
-                Upload a PPE image to run detection. Model in use:
+                Sube una imagen de EPP para ejecutar la deteccion. Modelo en uso:
                 <span class="mono">{MODEL_PATH.name}</span>
             </p>
         </div>
@@ -266,44 +298,84 @@ if uploaded_file is None:
 
 image = Image.open(uploaded_file).convert("RGB")
 model = load_model(MODEL_PATH)
+results = None
 
-with st.spinner("Running detection..."):
-    results = model.predict(
-        image,
-        conf=confidence_threshold,
-        iou=iou_threshold,
-        imgsz=image_size,
-        device="cpu",
-        verbose=False,
-    )
+with st.spinner("Ejecutando deteccion..."):
+    try:
+        results = model.predict(
+            image,
+            conf=confidence_threshold,
+            iou=iou_threshold,
+            imgsz=DEFAULT_ONNX_IMGSZ,
+            device="cpu",
+            verbose=False,
+        )
+    except Exception as exc:
+        st.error("La inferencia ONNX fallo. Revisa la compatibilidad del modelo y los logs del despliegue.")
+        st.code(f"{type(exc).__name__}: {exc}", language="text")
+        st.stop()
 
+if results is None or len(results) == 0:
+    st.error("El modelo no devolvio resultados de inferencia.")
+    st.stop()
+
+assert results is not None
 result = results[0]
-annotated_image = Image.fromarray(result.plot(conf=True, labels=True)[..., ::-1])
-detections = extract_detections(result)
+detections = extract_detections(result, image.width, image.height)
+annotated_image = render_boxes(image, detections)
 
 left, right = st.columns([1, 1])
 
 with left:
     st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.subheader("Original")
+    st.subheader("Imagen original")
     st.image(image, use_container_width=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
 with right:
     st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.subheader("Detections")
+    st.subheader("Detecciones")
     st.image(annotated_image, use_container_width=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
 metric_cols = st.columns(3)
-metric_cols[0].metric("Detections", len(result.boxes) if result.boxes is not None else 0)
-metric_cols[1].metric("Classes found", len({row["class"] for row in detections}))
-metric_cols[2].metric("Model", MODEL_PATH.name)
+metric_cols[0].metric("Detecciones", len(result.boxes) if result.boxes is not None else 0)
+metric_cols[1].metric("Clases detectadas", len({row["clase"] for row in detections}))
+metric_cols[2].metric("Modelo", MODEL_PATH.name)
 
 st.markdown('<div class="panel" style="margin-top: 0.85rem;">', unsafe_allow_html=True)
-st.subheader("All Detected Boxes and Probabilities")
+st.subheader("Todas las cajas detectadas y sus probabilidades")
 if detections:
-    st.dataframe(detections, use_container_width=True, hide_index=True)
+    st.dataframe(
+        detections,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "id_caja": st.column_config.NumberColumn("ID Caja", format="%d"),
+            "clase": st.column_config.TextColumn("Clase de PPE"),
+            "probabilidad": st.column_config.ProgressColumn(
+                "Probabilidad",
+                help="Nivel de confianza del modelo",
+                format="%f",
+                min_value=0.0,
+                max_value=1.0,
+            ),
+            "x1": st.column_config.NumberColumn("X1", format="%d px"),
+            "y1": st.column_config.NumberColumn("Y1", format="%d px"),
+            "x2": st.column_config.NumberColumn("X2", format="%d px"),
+            "y2": st.column_config.NumberColumn("Y2", format="%d px"),
+        },
+    )
 else:
-    st.write("No detections found for the current thresholds.")
+    st.write("No se encontraron detecciones con los umbrales actuales.")
 st.markdown("</div>", unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
+st.markdown(
+    """
+    <div style="text-align: center; margin-top: 2rem; color: var(--muted); font-size: 0.85rem;">
+        Desarrollado por <b>Sergio Cuadros</b> &copy; 2026
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
