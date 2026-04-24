@@ -13,8 +13,8 @@ except Exception as exc:  # pragma: no cover - deployment dependency guard
     ULTRALYTICS_IMPORT_ERROR = exc
 
 
-MODEL_PATH = Path(__file__).with_name("train-3_best.onnx")
-DEFAULT_ONNX_IMGSZ = 512
+MODEL_PATH = Path(__file__).with_name("train-3_best_float16.tflite")
+DEFAULT_IMGSZ = 512
 
 
 @st.cache_resource
@@ -38,7 +38,7 @@ def extract_detections(result, img_width: int, img_height: int) -> list[dict[str
     for idx, (class_id, confidence, coords) in enumerate(zip(class_ids, confidences, xyxy, strict=True), start=1):
         rx1, ry1, rx2, ry2 = coords
         
-        # FIX: Algunos modelos ONNX devuelven las coordenadas ya normalizadas [0, 1] 
+        # FIX: Algunos modelos devuelven las coordenadas ya normalizadas [0, 1] 
         # en lugar de absolutas. Si estan normalizadas, las reescalamos al ancho/alto.
         if abs(rx2) <= 2.0 and abs(ry2) <= 2.0:
             x1, x2 = rx1 * img_width, rx2 * img_width
@@ -47,7 +47,7 @@ def extract_detections(result, img_width: int, img_height: int) -> list[dict[str
             x1, x2 = rx1, rx2
             y1, y2 = ry1, ry2
             
-        # Si el ONNX devuelve centro o dimensiones alteradas, nos aseguramos de que x1<x2 y y1<y2
+        # Nos aseguramos de que x1<x2 y y1<y2 por si las cajas salen volteadas
         if x2 < x1: x1, x2 = x2, x1
         if y2 < y1: y1, y2 = y2, y1
         
@@ -246,7 +246,7 @@ st.markdown(
     <section class="hero">
       <div class="pill">Sistema de Vision de Seguridad</div>
       <h1>PPE Detector</h1>
-      <p>Sube una imagen para detectar equipo de proteccion personal con tu modelo ONNX.</p>
+      <p>Sube una imagen para detectar equipo de proteccion personal con tu modelo TFLite.</p>
     </section>
     """,
     unsafe_allow_html=True,
@@ -271,7 +271,7 @@ with st.sidebar:
     confidence_threshold = st.slider("Umbral de confianza", 0.05, 0.95, 0.25, 0.05)
     iou_threshold = st.slider("Umbral IoU", 0.05, 0.95, 0.45, 0.05)
     st.info(
-        "Esta app ejecuta el modelo ONNX con ONNX Runtime en CPU. "
+        "Esta app ejecuta el modelo TFLite en CPU. "
         "El tamano de la imagen se escala automaticamente a 512px de forma interna para la inferencia."
     )
     
@@ -316,12 +316,12 @@ with st.spinner("Ejecutando deteccion..."):
             image,
             conf=confidence_threshold,
             iou=iou_threshold,
-            imgsz=DEFAULT_ONNX_IMGSZ,
+            imgsz=DEFAULT_IMGSZ,
             device="cpu",
             verbose=False,
         )
     except Exception as exc:
-        st.error("La inferencia ONNX fallo. Revisa la compatibilidad del modelo y los logs del despliegue.")
+        st.error("La inferencia TFLite fallo. Revisa la compatibilidad del modelo y los logs del despliegue.")
         st.code(f"{type(exc).__name__}: {exc}", language="text")
         st.stop()
 
