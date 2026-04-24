@@ -32,13 +32,24 @@ def extract_detections(result, img_width: int, img_height: int) -> list[dict[str
     names = result.names
     class_ids = boxes.cls.tolist()
     confidences = boxes.conf.tolist()
-    xyxyn = boxes.xyxyn.tolist()  # Usar coordenadas normalizadas para asegurar la escala correcta
+    xyxy = boxes.xyxy.tolist()
 
     detections = []
-    for idx, (class_id, confidence, coords) in enumerate(zip(class_ids, confidences, xyxyn, strict=True), start=1):
-        nx1, ny1, nx2, ny2 = coords
-        x1, x2 = nx1 * img_width, nx2 * img_width
-        y1, y2 = ny1 * img_height, ny2 * img_height
+    for idx, (class_id, confidence, coords) in enumerate(zip(class_ids, confidences, xyxy, strict=True), start=1):
+        rx1, ry1, rx2, ry2 = coords
+        
+        # FIX: Algunos modelos ONNX devuelven las coordenadas ya normalizadas [0, 1] 
+        # en lugar de absolutas. Si estan normalizadas, las reescalamos al ancho/alto.
+        if abs(rx2) <= 2.0 and abs(ry2) <= 2.0:
+            x1, x2 = rx1 * img_width, rx2 * img_width
+            y1, y2 = ry1 * img_height, ry2 * img_height
+        else:
+            x1, x2 = rx1, rx2
+            y1, y2 = ry1, ry2
+            
+        # Si el ONNX devuelve centro o dimensiones alteradas, nos aseguramos de que x1<x2 y y1<y2
+        if x2 < x1: x1, x2 = x2, x1
+        if y2 < y1: y1, y2 = y2, y1
         
         detections.append(
             {
