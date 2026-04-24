@@ -5,14 +5,22 @@ from pathlib import Path
 
 import streamlit as st
 from PIL import Image
-from ultralytics import YOLO
+
+try:
+    from ultralytics import YOLO
+    ULTRALYTICS_IMPORT_ERROR: Exception | None = None
+except Exception as exc:  # pragma: no cover - deployment dependency guard
+    YOLO = None  # type: ignore[assignment]
+    ULTRALYTICS_IMPORT_ERROR = exc
 
 
 MODEL_PATH = Path(__file__).with_name("train-3_best.onnx")
 
 
 @st.cache_resource
-def load_model(model_path: Path) -> YOLO:
+def load_model(model_path: Path):
+    if YOLO is None:
+        raise RuntimeError("Ultralytics is not available in this environment.") from ULTRALYTICS_IMPORT_ERROR
     return YOLO(str(model_path), task="detect")
 
 
@@ -217,6 +225,16 @@ st.markdown(
 
 if not MODEL_PATH.exists():
     st.error(f"Model file not found: `{MODEL_PATH}`")
+    st.stop()
+
+if YOLO is None:
+    st.error("Ultralytics is not installed correctly in this deployment.")
+    st.info(
+        "Install dependencies from requirements.txt and redeploy. "
+        "If it still fails, check build logs for the ultralytics install error."
+    )
+    if ULTRALYTICS_IMPORT_ERROR is not None:
+        st.code(str(ULTRALYTICS_IMPORT_ERROR), language="text")
     st.stop()
 
 with st.sidebar:
