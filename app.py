@@ -140,17 +140,6 @@ st.markdown(
         background: linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(242, 252, 249, 0.92) 100%);
     }
 
-    [data-testid="stSidebar"] * {
-        font-family: 'Space Grotesk', sans-serif;
-    }
-
-    [data-testid="stSidebar"] .material-icons,
-    [data-testid="stSidebar"] [class*="material-symbols"] {
-        font-family: "Material Symbols Rounded" !important;
-        font-weight: normal;
-        font-style: normal;
-    }
-
     .panel {
         border: 1px solid var(--line);
         border-radius: 18px;
@@ -274,6 +263,16 @@ with st.sidebar:
         "Esta app ejecuta el modelo ONNX con ONNX Runtime en CPU. "
         "El tamano de la imagen se escala automaticamente a 640px de forma interna para la inferencia."
     )
+    
+    st.markdown("<br><br><br>", unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div style="text-align: center; color: var(--muted); font-size: 0.85rem;">
+            Desarrollado por <b>Sergio Cuadros</b> &copy; 2026
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 uploaded_file = st.file_uploader(
     "Sube una imagen",
@@ -369,13 +368,3 @@ if detections:
 else:
     st.write("No se encontraron detecciones con los umbrales actuales.")
 st.markdown("</div>", unsafe_allow_html=True)
-
-st.markdown("<br>", unsafe_allow_html=True)
-st.markdown(
-    """
-    <div style="text-align: center; margin-top: 2rem; color: var(--muted); font-size: 0.85rem;">
-        Desarrollado por <b>Sergio Cuadros</b> &copy; 2026
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
